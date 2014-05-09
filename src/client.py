@@ -18,7 +18,6 @@ class Client(object):
         """ Configure the bfclient from the config_file """
         self.ip = socket.gethostbyname(socket.gethostname())
         self.ip = '127.0.0.1'
-        self.ip = 'localhost'
         self.name = None
         self.port = None
         self.timeout = None
@@ -54,6 +53,7 @@ class Client(object):
         self.name = "{}:{}".format(self.ip, self.port)
         self.routing_table = routing_table.RoutingTable(
                 self.name, self.neighbors, node.Node(self.ip, self.port, 0))
+        self.timeouts = dict()
 
         # make socket
         self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -61,11 +61,9 @@ class Client(object):
 
         # start broadcast timer
         self.broadcast_rt()
-        print 'started'
 
     def reset_broadcast(self):
         """ Resests the timer on the broadcast """
-
         if hasattr(self, 'broadcast_timer'):
             self.broadcast_timer.cancel()
         self.broadcast_timer = Timer(self.timeout, self.broadcast_rt)
@@ -82,6 +80,28 @@ class Client(object):
         if self.routing_table.update(packet):
             self.reset_broadcast()
 
+    def reset_timeout_node(self, node_name):
+        if node_name in self.timeouts:
+            self.timeouts[node_name].cancel()
+        self.timeouts[node_name] = Timer(self.timeout*3, self.timeout_node,
+                                         args=[node_name])
+        self.timeouts[node_name].start()
+
+    def timeout_node(self, node_name):
+        self.routing_table.link_down(node_name)
+        del self.timeouts[node_name]
+        self.broadcast_rt()
+        print '{} timed out'.format(node_name)
+
+    def process_pkt(self, pkt):
+        node_name = pkt['name']
+        self.reset_timeout_node(node_name)
+
+        if pkt['type'] == routing_table.RT_UPDATE:
+            if self.update_rt(pkt):
+                # rebroadcast if values change
+                self.broadcast_rt()
+
     def run(self):
         """ listen for commands an incoming messages to update the table """
         while True:
@@ -90,6 +110,4 @@ class Client(object):
                 if s == self.udp:
                     msg, (ip, port) = s.recvfrom(BUFFER)
                     pkt = json.loads(msg)
-                    print pkt
-                    if self.update_rt(pkt):
-                        self.broadcast_rt()
+                    self.process_pkt(pkt)

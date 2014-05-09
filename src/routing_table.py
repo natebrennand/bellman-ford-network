@@ -32,8 +32,10 @@ class RoutingTable(object):
         neighbor_vector = packet['data']
         self.table[neighbor_name] = neighbor_vector
 
+        # update if link with neighbor cost is now cheaper
         if neighbor_vector[self.src_node][0] < self.table[self.src_node][neighbor_name][0]:
             self.table[self.src_node][neighbor_name] = [neighbor_vector[self.src_node][0], self.src_node]
+            return True or self.__recompute()
 
         return self.__recompute()
 
@@ -55,6 +57,11 @@ class RoutingTable(object):
                 changes = True
 
         return changes
+
+    def link_down(self, node_name):
+        if node_name in self.table[self.src_node]:
+            self.table[self.src_node][node_name] = [float('inf'), 'N/A']
+        print self
 
 
     def transmit_str(self):

@@ -15,7 +15,6 @@ class Node(object):
     def message(self, msg, conn):
         conn.sendto(msg, (self.ip, self.port))
 
-
     def name(self):
         return "{}:{}".format(self.ip, self.port)
 

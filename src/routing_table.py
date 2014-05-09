@@ -70,6 +70,7 @@ class RoutingTable(object):
 
 
     def link_down(self, node_name):
+        """ Takes down a link and returns the pkt string """
         if node_name in self.table[self.src_node]:
             self.table[self.src_node][node_name] = [float('inf'), 'N/A']
             print 'New routing table:\n', self
@@ -83,7 +84,7 @@ class RoutingTable(object):
             "type": RT_LINKDOWN,
             "name": self.src_node,
             "data": {
-                "node_name": node_name,
+                "name": node_name
             }
         })
 
@@ -96,6 +97,20 @@ class RoutingTable(object):
 
         self.table[self.src_node][node_name] = [weight, self.src_node]
         return True
+
+
+    def transmit_linkup(self, n):
+        return json.dumps({
+            "type": RT_LINKUP,
+            "name": self.src_node,
+            "data": {
+                "name": n.name,
+                "ip": n.ip,
+                "port": n.port,
+                "weight": n.weight
+            }
+        })
+
 
     def transmit_str(self):
         return json.dumps({

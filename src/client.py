@@ -82,6 +82,7 @@ class Client(object):
     def update_rt(self, packet):
         """ called with an incoming packet that has a new distance vector """
         if self.routing_table.update(packet):
+            # broadcast if change
             self.reset_broadcast()
 
     def reset_timeout_node(self, node_name):
@@ -98,13 +99,35 @@ class Client(object):
         print '{} timed out'.format(node_name)
 
     def remove_node(self, node_name):
+        """ Removes a node from this neighbor and informs the node that the
+            connection is down
+        """
+        # remove from routing table and notify node
         self.neighbors[node_name].message(
             self.routing_table.link_down(node_name),
             self.transmit_conn
         )
+        # cancel timeout
+        self.timeouts[node_name].cancel()
         del self.timeouts[node_name]
+        # broadcast new routing table
         self.broadcast_rt()
+        # don't message node
         self.neighbors[node_name].ignore = True
+
+    def add_node(self, node_name, pkt_data):
+        """ stop ignoring a node and add it if necessary """
+        update = False
+        if self.neighbors[node_name].ignore:
+            self.neighbors[node_name].ignore = False
+            update = True
+        if node_name not in self.neighbors:
+            self.neighbors[node_name] = node.Node(pkt_data['ip'],
+                                                    pkt_data['port'],
+                                                    pkt_data['weight'])
+            update = True
+        if update:
+            self.broadcast_rt()
 
 
     def process_pkt(self, pkt):
@@ -112,15 +135,21 @@ class Client(object):
         node_name = pkt['name']
         self.reset_timeout_node(node_name)
 
+        print pkt['type']
+
         # Process update to routing table
         if pkt['type'] == routing_table.RT_UPDATE:
-            if self.update_rt(pkt):
-                # rebroadcast if values change
-                self.broadcast_rt()
+            self.update_rt(pkt)
+            self.add_node(pkt['name'], pkt['data'])
 
         # Turn off a link and ignore node
         elif pkt['type'] == routing_table.RT_LINKDOWN:
             self.remove_node(pkt['name'])
+
+        # Stop ignoring a node that has been linked up
+        elif pkt['type'] == routing_table.RT_LINKUP:
+            self.add_node(pkt['name'], pkt['data'])
+
 
 
     def process_command(self, command, args):
@@ -153,10 +182,19 @@ class Client(object):
 
         # print out the current routing table
         elif command == 'SHOWRT':
-            print self.table
+            print self.routing_table
 
+        # close down the connection
         elif command == 'CLOSE':
-            pass
+            close_msg = self.routing_table.transmit_linkdown(self.name)
+            for neighbor in self.neighbors.values():
+                neighbor.message(close_msg, self.transmit_conn)
+            self.broadcast_timer.cancel()
+            for t in self.timeouts.values():
+                t.cancel()
+            print 'SHUTTING DOWN NODE'
+            exit(0)
+
         elif command == 'TRANSFER':
             pass
         else:
@@ -173,5 +211,6 @@ class Client(object):
                     self.process_pkt(pkt)
                 elif s == stdin:
                     user_input = stdin.readline().strip().split()
-                    command, args = user_input[0], user_input[1:]
-                    self.process_command(command, args)
+                    if len(user_input):
+                        command, args = user_input[0], user_input[1:]
+                        self.process_command(command, args)

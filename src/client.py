@@ -81,6 +81,7 @@ class Client(object):
             self.reset_broadcast()
 
     def reset_timeout_node(self, node_name):
+        """ Reset the timer to remove a neighboring node """
         if node_name in self.timeouts:
             self.timeouts[node_name].cancel()
         self.timeouts[node_name] = Timer(self.timeout*3, self.timeout_node,
@@ -88,12 +89,14 @@ class Client(object):
         self.timeouts[node_name].start()
 
     def timeout_node(self, node_name):
+        """ Remove a node that hasn't been active in 3 * timeout """
         self.routing_table.link_down(node_name)
         del self.timeouts[node_name]
         self.broadcast_rt()
         print '{} timed out'.format(node_name)
 
     def process_pkt(self, pkt):
+        """ Process a packet that is received on the UDP socket """
         node_name = pkt['name']
         self.reset_timeout_node(node_name)
 
@@ -101,6 +104,21 @@ class Client(object):
             if self.update_rt(pkt):
                 # rebroadcast if values change
                 self.broadcast_rt()
+
+    def process_command(self, command, args):
+        """ Process a user inputted command """
+        if command == 'LINKDOWN':
+            pass
+        elif command == 'LINKUP':
+            pass
+        elif command == 'SHOWRT':
+            pass
+        elif command == 'CLOSE':
+            pass
+        elif command == 'TRANSFER':
+            pass
+        else:
+            print 'Command not recognized'
 
     def run(self):
         """ listen for commands an incoming messages to update the table """
@@ -111,3 +129,7 @@ class Client(object):
                     msg, (ip, port) = s.recvfrom(BUFFER)
                     pkt = json.loads(msg)
                     self.process_pkt(pkt)
+                elif s == stdin:
+                    user_input = stdin.readline().strip().split()
+                    command, args = user_input[0], user_input[1:]
+                    self.process_command(command, args)

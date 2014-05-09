@@ -107,8 +107,13 @@ class Client(object):
 
     def process_command(self, command, args):
         """ Process a user inputted command """
+        command.upper()
         if command == 'LINKDOWN':
-            pass
+            if len(args) != 2:
+                print 'USUAGE:\n\tLINKDOWN <ip addr> <port>'
+                return
+            down_node = '{}:{}'.format(args[0], args[1])
+            self.routing_table.link_down(down_node)
         elif command == 'LINKUP':
             pass
         elif command == 'SHOWRT':

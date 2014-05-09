@@ -61,7 +61,9 @@ class RoutingTable(object):
     def link_down(self, node_name):
         if node_name in self.table[self.src_node]:
             self.table[self.src_node][node_name] = [float('inf'), 'N/A']
-        print self
+            print 'New routing table:\n', self
+        else:
+            print "Node, {}, not found in routing table".format(node_name)
 
 
     def transmit_str(self):

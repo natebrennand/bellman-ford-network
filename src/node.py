@@ -11,6 +11,7 @@ class Node(object):
 
     def update_rt(self, rt_str):
         self.conn.sendto(rt_str, (self.ip, self.port))
+        print 'sent rt to ',  self.ip, self.port
 
     def name(self):
         return "{}:{}".format(self.ip, self.port)

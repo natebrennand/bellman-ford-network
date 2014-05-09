@@ -23,9 +23,10 @@ class Client(object):
         self.timeout = None
         self.file_chunk = None
         self.chunk_number = None
-        self.neighbors = []
+        self.neighbors = dict()
         self.udp = None
         self.routing_table = None
+        self.transmit_conn = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
         with open(config_file, 'r') as f:
             config = f.readline().strip().split()
@@ -38,7 +39,8 @@ class Client(object):
             for line in f:
                 ip_port, weight = line.strip().split()
                 ip, port = ip_port.split(":")
-                self.neighbors.append(node.Node(ip, int(port), float(weight)))
+                name = "{}:{}".format(ip, port)
+                self.neighbors[name] = node.Node(ip, int(port), float(weight))
                 
 
         # validation
@@ -52,7 +54,8 @@ class Client(object):
         # create routing table
         self.name = "{}:{}".format(self.ip, self.port)
         self.routing_table = routing_table.RoutingTable(
-                self.name, self.neighbors, node.Node(self.ip, self.port, 0))
+                self.name, self.neighbors.values(), node.Node(self.ip,
+                                                              self.port, 0))
         self.timeouts = dict()
 
         # make socket
@@ -71,8 +74,9 @@ class Client(object):
 
     def broadcast_rt(self):
         """ Broadcasts the distance vector to all neighbors """
-        for neighbor in self.neighbors:
-            neighbor.update_rt(self.routing_table.transmit_str())
+        for neighbor in self.neighbors.values():
+            neighbor.update_rt(self.routing_table.transmit_str(),
+                               self.transmit_conn)
         self.reset_broadcast()
 
     def update_rt(self, packet):
@@ -90,34 +94,67 @@ class Client(object):
 
     def timeout_node(self, node_name):
         """ Remove a node that hasn't been active in 3 * timeout """
-        self.routing_table.link_down(node_name)
+        self.remove_node(node_name)
+        print '{} timed out'.format(node_name)
+
+    def remove_node(self, node_name):
+        self.neighbors[node_name].message(
+            self.routing_table.link_down(node_name),
+            self.transmit_conn
+        )
         del self.timeouts[node_name]
         self.broadcast_rt()
-        print '{} timed out'.format(node_name)
+        self.neighbors[node_name].ignore = True
+
 
     def process_pkt(self, pkt):
         """ Process a packet that is received on the UDP socket """
         node_name = pkt['name']
         self.reset_timeout_node(node_name)
 
+        # Process update to routing table
         if pkt['type'] == routing_table.RT_UPDATE:
             if self.update_rt(pkt):
                 # rebroadcast if values change
                 self.broadcast_rt()
 
+        # Turn off a link and ignore node
+        elif pkt['type'] == routing_table.RT_LINKDOWN:
+            self.remove_node(pkt['name'])
+
+
     def process_command(self, command, args):
         """ Process a user inputted command """
-        command.upper()
+        command = command.upper()
+
+        # Remove a link with a neighbor
         if command == 'LINKDOWN':
             if len(args) != 2:
                 print 'USUAGE:\n\tLINKDOWN <ip addr> <port>'
                 return
             down_node = '{}:{}'.format(args[0], args[1])
-            self.routing_table.link_down(down_node)
+            self.remove_node(down_node)
+
+
+        # add a link to a neighbor and broadcast it
         elif command == 'LINKUP':
-            pass
+            if len(args) != 3:
+                print 'USUAGE:\n\tLINKUP <ip addr> <port> <weight>'
+                return
+            up_node = '{}:{}'.format(args[0], args[1])
+            try:
+                weight = float(args[2])
+            except ValueError:
+                print 'USUAGE:\n\tLINKUP <ip addr> <port> <weight>'
+                print '<weight> must be a number'
+                return
+            if self.routing_table.link_up(up_node, weight):
+                self.broadcast_rt()
+
+        # print out the current routing table
         elif command == 'SHOWRT':
-            pass
+            print self.table
+
         elif command == 'CLOSE':
             pass
         elif command == 'TRANSFER':

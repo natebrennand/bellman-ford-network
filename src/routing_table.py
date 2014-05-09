@@ -2,6 +2,8 @@
 import json
 
 RT_UPDATE = "ROUTE_UPDATE"
+RT_LINKUP = "ROUTE_LINKUP"
+RT_LINKDOWN = "ROUTE_LINKDOWN"
 
 class RoutingTable(object):
 
@@ -32,12 +34,21 @@ class RoutingTable(object):
         neighbor_vector = packet['data']
         self.table[neighbor_name] = neighbor_vector
 
+        update = False
+
+        # check if there's a new connection
+        if (neighbor_name not in self.table[self.src_node] and
+                self.src_node in neighbor_vector):
+            self.table[self.src_node][neighbor_name] = (
+                [neighbor_vector[self.src_node][0], self.src_node])
+            update = True
+
         # update if link with neighbor cost is now cheaper
         if neighbor_vector[self.src_node][0] < self.table[self.src_node][neighbor_name][0]:
             self.table[self.src_node][neighbor_name] = [neighbor_vector[self.src_node][0], self.src_node]
-            return True or self.__recompute()
+            update = True
 
-        return self.__recompute()
+        return update or self.__recompute()
 
 
     def __recompute(self):
@@ -51,12 +62,12 @@ class RoutingTable(object):
                 possible_costs.append([n_cost[0] + self.table[n_name][dest][0],
                                        n_name])
             # assign the smallest one
-            print self.src_node, dest, possible_costs
             self.table[self.src_node][dest] = min(*possible_costs)
             if self.table[self.src_node][dest] != cost:
                 changes = True
 
         return changes
+
 
     def link_down(self, node_name):
         if node_name in self.table[self.src_node]:
@@ -64,7 +75,27 @@ class RoutingTable(object):
             print 'New routing table:\n', self
         else:
             print "Node, {}, not found in routing table".format(node_name)
+        return self.transmit_linkdown(node_name)
 
+
+    def transmit_linkdown(self, node_name):
+        return json.dumps({
+            "type": RT_LINKDOWN,
+            "name": self.src_node,
+            "data": {
+                "node_name": node_name,
+            }
+        })
+
+
+    def link_up(self, node_name, weight):
+        """ Adds to routing table, returns True if changes are made """
+        if node_name in self.table[self.src_node]:
+            if self.table[self.src_node][node_name] == [weight, self.src_node]:
+                return False
+
+        self.table[self.src_node][node_name] = [weight, self.src_node]
+        return True
 
     def transmit_str(self):
         return json.dumps({

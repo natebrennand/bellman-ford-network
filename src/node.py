@@ -1,17 +1,20 @@
 
-import socket
-
 class Node(object):
 
     def __init__(self, ip, port, weight):
         self.ip = ip
         self.port = port
         self.weight = weight
-        self.conn = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.ignore = False
 
-    def update_rt(self, rt_str):
-        self.conn.sendto(rt_str, (self.ip, self.port))
-        print 'sent rt to ',  self.ip, self.port
+    def update_rt(self, rt_str, conn):
+        if not self.ignore:
+            conn.sendto(rt_str, (self.ip, self.port))
+            print 'sent rt to ',  self.ip, self.port
+    
+    def message(self, msg, conn):
+        conn.sendto(msg, (self.ip, self.port))
+
 
     def name(self):
         return "{}:{}".format(self.ip, self.port)

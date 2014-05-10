@@ -16,6 +16,7 @@ class RoutingTable(object):
 
         # add own edges
         self.own_edges = dict((n.name(), [n.weight, self.src_node]) for n in neighbor_list)
+        self.own_edges[self.src_node] = [0, self.src_node]
 
         # initialize table for every node
         self.table[self.src_node] = {}
@@ -70,32 +71,42 @@ class RoutingTable(object):
         # in set of own edges
         if node_name in self.own_edges:
             del self.own_edges[node_name]
+        else:
+            return
 
         # if has a set of edges
-        if node_name in self.table:
-            del self.table[node_name]
+        #if node_name in self.table:
+        del self.table[node_name]
 
         # first step in path to node
         for dest, (cost, first_step) in self.table[self.src_node].items():
             if first_step == node_name:
                 del self.table[self.src_node][dest]
 
-        # last step
+        # delete if last step in path uses connection
         if node_name in self.table[self.src_node]:
             values = self.table[self.src_node][node_name]
             for src in self.table:
                 for dest, cost_step in self.table[src].items():
-                    if cost_step == values:
+                    if dest == node_name and cost_step == values:
                         del self.table[src][dest]
+        
+        return True or self.__recompute()
 
 
     def __recompute(self):
         """ Re-calculates everything, returns True if changes are made """
         changes = False
+        new_table_vector = dict()
+
         # all nodes with a direct connection or connection from a neighbor
-        destinations = set(
-            [r for n in self.table.values() for r in n.keys() if r != self.src_node] +
-            self.own_edges.keys())
+        destinations = set()
+        for k in self.own_edges.keys():
+            destinations.add(k)
+        for k, vector in self.table.items():
+            if k != self.src_node:
+                for d in vector.keys():
+                    destinations.add(d)
 
         # find the cheapest path to all these nodes
         for goal_dest in destinations:
@@ -121,19 +132,19 @@ class RoutingTable(object):
             likely_min = min(possible_costs)
             # ignore if cost unchanged
             if likely_min[0] != cost[0]:
-                self.table[self.src_node][goal_dest] = likely_min
+                new_table_vector[goal_dest] = likely_min
+                #print goal_dest, likely_min
                 changes = True
+            else:
+                new_table_vector[goal_dest] = cost
+                #print goal_dest, cost
 
+        # if size of vector is different
+        if len(new_table_vector) != len(self.table[self.src_node]):
+            changes = True
+
+        self.table[self.src_node] = new_table_vector
         return changes
-
-    def link_up(self, node_name, weight):
-        """ Adds to routing table, returns True if changes are made """
-        if node_name in self.table[self.src_node]:
-            if self.table[self.src_node][node_name] == [weight, self.src_node]:
-                return False
-
-        self.table[self.src_node][node_name] = [weight, self.src_node]
-        return True
 
 
     def linkup_str(self, dest_weight):
@@ -141,7 +152,10 @@ class RoutingTable(object):
         return json.dumps({
             "type": RT_LINKUP,
             "name": self.src_node,
-            "weight": dest_weight
+            "ip": self.ip,
+            "port": self.port,
+            "weight": dest_weight,
+            "data": self.table[self.src_node]
         })
 
 
@@ -158,6 +172,7 @@ class RoutingTable(object):
 
 
     def __str__(self):
+        print self.own_edges
         rt = ""
         for client, (cost, first_step) in self.table[self.src_node].iteritems():
             rt += "Destination = {}, Cost = {}, Link = ({})\n".format(

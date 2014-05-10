@@ -8,7 +8,6 @@ def make_node_10():
     src_node = node.Node('123', 10, 0)
     neighbors = [
         node.Node('123', 11, 1),
-        node.Node('123', 12, 2),
         node.Node('123', 13, 5),
     ]
     src_routing_table = routing_table.RoutingTable(neighbors, src_node)
@@ -18,16 +17,25 @@ def make_node_11():
     node11 = node.Node('123', 11, 0)
     neighbors_11 = [
         node.Node('123', 10, 1),
-        node.Node('123', 13, 5),
+        node.Node('123', 13, 7),
         node.Node('123', 15, 1),
     ]
     node11_routing_table = routing_table.RoutingTable(neighbors_11, node11)
     return node11, node11_routing_table
 
+def make_node_13():
+    node13 = node.Node('123', 11, 0)
+    neighbors_13 = [
+        node.Node('123', 10, 5),
+        node.Node('123', 11, 7),
+    ]
+    node13_routing_table = routing_table.RoutingTable(neighbors_13, node13)
+    return node13, node13_routing_table
+
 def make_node_15():
     node15 = node.Node('123', 15, 0)
     neighbors_15 = [
-        node.Node('123', 11, 2),
+        node.Node('123', 11, 1),
         node.Node('123', 16, 1),
     ]
     node15_routing_table = routing_table.RoutingTable(neighbors_15, node15)
@@ -51,14 +59,17 @@ class TestRoutingTable(unittest.TestCase):
             'data': rt.table[b.name()],
         })
 
-    def Test_Basic_Update(self):
+    def __has_route(self, rt, n):
+        return n in rt.table[rt.src_node]
+
+    def test_Basic_Update(self):
         a, a_rt = make_node_10()
         b, b_rt = make_node_11()
 
         # adds node 16 to network
         self.assertTrue(self.__update(a_rt, b, b_rt))
 
-    def Test_Redundant_Update(self):
+    def test_Redundant_Update(self):
         a, a_rt = make_node_10()
         b, b_rt = make_node_11()
 
@@ -69,7 +80,7 @@ class TestRoutingTable(unittest.TestCase):
         # should add nothing
         self.assertFalse(self.__update(a_rt, b, b_rt))
 
-    def Test_Update_Propogation(self):
+    def test_Update_Propogation(self):
         a, a_rt = make_node_10()
         b, b_rt = make_node_11()
         c, c_rt = make_node_15()
@@ -85,4 +96,29 @@ class TestRoutingTable(unittest.TestCase):
         self.assertTrue(self.__update(b_rt, c, c_rt))
         # update 10 with an update 11
         self.assertTrue(self.__update(a_rt, b, b_rt))
+
+    def test_remove_node(self):
+        a, a_rt = make_node_10()
+        b, b_rt = make_node_11()
+        c, c_rt = make_node_15()
+        self.assertTrue(self.__update(a_rt, b, b_rt))
+        self.assertTrue(self.__update(b_rt, a, a_rt))
+        self.assertTrue(self.__update(b_rt, c, c_rt))
+        self.assertTrue(self.__update(c_rt, b, b_rt))
+        self.assertTrue(self.__update(a_rt, b, b_rt))
+
+        b_rt.remove_node(c.name())
+        self.assertFalse(self.__has_route(b_rt, c.name()))
+
+        self.assertTrue(self.__update(a_rt, b, b_rt))
+        self.__update(a_rt, b, b_rt)
+
+        temp, temp_rt = make_node_10()
+        temp_rt.table[b.name()][temp.name()] = [1, b.name()]
+        temp_rt.table[b.name()]['123:13'] = [6, temp.name()] # routed through 10
+
+        self.assertDictEqual(a_rt.table, temp_rt.table)
+
+
+
 

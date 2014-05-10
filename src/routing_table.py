@@ -21,8 +21,9 @@ class RoutingTable(object):
         # initalize all values to inf for nodes
         for neighbor in neighbor_list + [source]:
             from_node = neighbor.name()
-            for to_node in neighbor_list + [source]:
-                self.table[from_node][to_node.name()] = [float('inf'), 'N/A']
+            self.table[from_node] = {}
+            # for to_node in neighbor_list + [source]:
+            #    self.table[from_node][to_node.name()] = [float('inf'), 'N/A']
             self.table[from_node][from_node] = [0, from_node]
 
         # set known neighbor values
@@ -32,57 +33,76 @@ class RoutingTable(object):
 
 
     def update(self, packet):
-        # see transmit_str() for format
-        neighbor_name = packet['name']
-        neighbor_vector = packet['data']
-        self.table[neighbor_name] = neighbor_vector
-
+        """ Uopdate neighboring node; makes adjacent edge adjustments """
+        # see transmit_str() for format of packet
+        n_name = packet['name']
+        n_vector = packet['data']
+        src_vector = self.table[self.src_node]
+        self.table[n_name] = n_vector
         update = False
 
+
         # check if there's a new connection
-        if (neighbor_name not in self.table[self.src_node] and
-                self.src_node in neighbor_vector):
-            self.table[self.src_node][neighbor_name] = (
-                [neighbor_vector[self.src_node][0], self.src_node])
+        if (n_name not in src_vector and self.src_node in n_vector):
+            src_vector[n_name] = [n_vector[self.src_node][0], self.src_node]
             update = True
 
-        # update if link with neighbor cost is now cheaper
-        if neighbor_vector[self.src_node][0] < self.table[self.src_node][neighbor_name][0]:
-            self.table[self.src_node][neighbor_name] = (
-                    [neighbor_vector[self.src_node][0], self.src_node])
+        # update if direct link to neighbor is now cheaper
+        n_route = n_vector[self.src_node]
+        s_route = src_vector[n_name]
+        if n_route[0] < s_route[0] and n_route[1] == self.src_node and n_name == s_route[1]:
+            s_route = [n_route[0], self.src_node]
             update = True
 
         return update or self.__recompute()
 
 
+    def remove_node(self, node_name):
+        """ Remove all links directly from this node to node_name"""
+        print self.table
+        values = self.table[self.src_node][node_name]
+
+        # first step in path to node
+        for dest, (cost, first_step) in self.table[self.src_node].items():
+            if first_step == node_name:
+                del self.table[self.src_node][dest]
+
+        # last step
+        for src in self.table:
+            for dest, cost_step in self.table[src].items():
+                if cost_step == values:
+                    del self.table[src][dest]
+
+
     def __recompute(self):
         """ Re-calculates everything, returns True if changes are made """
         changes = False
-        # iterate through all neigboring nodes of the src node
-        for dest, cost in self.table[self.src_node].iteritems():
-            # find all possible costs
+        # all nodes with a direct connection or connection from a neighbor
+        destinations = set(
+            [r for n in self.table.values() for r in n.keys()])
+
+        # find the cheapest path to all these nodes
+        for dest in destinations:
+            cost = self.table[self.src_node].get(dest, [None, None])
             possible_costs = []
-            for n_name, n_cost in self.table[self.src_node].iteritems():
-                possible_costs.append([n_cost[0] + self.table[n_name][dest][0],
-                                       n_name])
+            # loop possible first steps
+            for step1, (cost1, step0) in self.table[self.src_node].iteritems():
+                if step1 == dest:
+                    possible_costs.append([cost1, step0])
+                # loop looking for second steps
+                if step1 in self.table:
+                    for n_dest, (cost2, step2) in self.table[step1].iteritems():
+                        if n_dest == dest and n_dest != step2:
+                            possible_costs.append([cost1 + cost2, step1])
+
             # assign the smallest one
-            self.table[self.src_node][dest] = min(*possible_costs)
-            if self.table[self.src_node][dest] != cost:
+            likely_min = min(possible_costs)
+            # default to former path if cost unchanged
+            if likely_min[0] != cost[0]:
+                self.table[self.src_node][dest] = likely_min
                 changes = True
 
         return changes
-
-
-    def transmit_linkdown(self, node_name):
-        return json.dumps({
-            "type": RT_LINKDOWN,
-            "name": self.src_node,
-            "data": {
-                # transmit our own name since we want the recieving node to
-                # ignore the transmitted 
-                "name": self.src_node  
-            }
-        })
 
 
     def link_up(self, node_name, weight):

@@ -108,12 +108,17 @@ class Client(object):
 
     def remove_node(self, node_name, ignore=False):
         """ Removes a node from this neighbor """
-        if node_name in self.timeouts:  # cancel timeout timer
+        # cancel timeout timer
+        if node_name in self.timeouts:
             self.timeouts[node_name].cancel()
             del self.timeouts[node_name]
+        # remove node from neighbors
         if node_name in self.neighbors:
-            del self.neighbors[node_name]  # remove node from neighbors
-        self.broadcast_rt()  # broadcast new routing table
+            del self.neighbors[node_name]
+        # remove node from routing table
+        self.routing_table.remove_node(node_name)
+        # broadcast new routing table
+        self.broadcast_rt()
         if ignore:
             self.ignore_neighbors.add(node_name)
 
@@ -186,8 +191,12 @@ class Client(object):
                 print 'USUAGE:\n\tLINKUP <ip addr> <port> <weight>'
                 print '<weight> must be a number'
                 return
-            if self.routing_table.link_up(up_node, weight):
-                self.broadcast_rt()
+            self.add_node(self, {
+                'name': up_node,
+                'ip': args[0],
+                'port': args[1],
+                'weight': weight
+            })
 
         # print out the current routing table
         elif command == 'SHOWRT':

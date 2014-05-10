@@ -35,43 +35,46 @@ class RoutingTable(object):
     def update(self, packet):
         """ Uopdate neighboring node; makes adjacent edge adjustments """
         # see transmit_str() for format of packet
-        n_name = packet['name']
-        n_vector = packet['data']
+        p_name = packet['name']
+        self.table[p_name] = packet['data']
         src_vector = self.table[self.src_node]
-        self.table[n_name] = n_vector
+        p_vector = self.table[p_name]
         update = False
 
 
-        # check if there's a new connection
-        if (n_name not in src_vector and self.src_node in n_vector):
-            src_vector[n_name] = [n_vector[self.src_node][0], self.src_node]
+        # check if there's a new connection to this node
+        if p_name not in src_vector and self.src_node in p_vector:
+            print 'New connection to {}'.format(p_name)
+            # add edge to this node's vector
+            src_vector[p_name] = [p_vector[self.src_node][0], self.src_node]
             update = True
 
-        # update if direct link to neighbor is now cheaper
-        n_route = n_vector[self.src_node]
-        s_route = src_vector[n_name]
-        if n_route[0] < s_route[0] and n_route[1] == self.src_node and n_name == s_route[1]:
-            s_route = [n_route[0], self.src_node]
-            update = True
+        # check if a cheaper connection exists
+        elif self.src_node in p_vector:
+            other_cost = p_vector[self.src_node]
+            our_cost = src_vector[p_name]
+            if (other_cost[0] < our_cost[0] and  # cheaper
+                    other_cost[1] == p_name):  # direct
+                src_vector[p_name] = [other_cost[0], self.src_node]
+                update = True
 
         return update or self.__recompute()
 
 
     def remove_node(self, node_name):
         """ Remove all links directly from this node to node_name"""
-        print self.table
-        values = self.table[self.src_node][node_name]
-
         # first step in path to node
         for dest, (cost, first_step) in self.table[self.src_node].items():
             if first_step == node_name:
                 del self.table[self.src_node][dest]
 
         # last step
-        for src in self.table:
-            for dest, cost_step in self.table[src].items():
-                if cost_step == values:
-                    del self.table[src][dest]
+        if node_name in self.table[self.src_node]:
+            values = self.table[self.src_node][node_name]
+            for src in self.table:
+                for dest, cost_step in self.table[src].items():
+                    if cost_step == values:
+                        del self.table[src][dest]
 
 
     def __recompute(self):
@@ -87,14 +90,20 @@ class RoutingTable(object):
             possible_costs = []
             # loop possible first steps
             for step1, (cost1, step0) in self.table[self.src_node].iteritems():
+                # one step solution
                 if step1 == dest:
                     possible_costs.append([cost1, step0])
                 # loop looking for second steps
                 if step1 in self.table:
                     for n_dest, (cost2, step2) in self.table[step1].iteritems():
-                        if n_dest == dest and n_dest != step2:
+                        # 1. check destination is correct
+                        # 2. check not using a zero distance vector
+                        # 3. check poison reverse
+                        if n_dest == dest and n_dest != step2 and step1 != step2:
                             possible_costs.append([cost1 + cost2, step1])
 
+            if not possible_costs:
+                continue
             # assign the smallest one
             likely_min = min(possible_costs)
             # default to former path if cost unchanged

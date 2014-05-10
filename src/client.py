@@ -60,7 +60,11 @@ class Client(object):
 
         # make socket
         self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.udp.bind((self.ip, self.port))
+        try:
+            self.udp.bind((self.ip, self.port))
+        except socket.error, e:
+            print e
+            self.shutdown_node()
 
         # start broadcast timer
         self.broadcast_rt()
@@ -126,7 +130,8 @@ class Client(object):
     def shutdown_node(self):
         """ Shuts donw the node. Others will let it timeout """
         # cancel timer threads
-        self.broadcast_timer.cancel()
+        if hasattr(self, 'broadcast_timer'):
+            self.broadcast_timer.cancel()
         for t in self.timeouts.values():
             t.cancel()
         # close process

@@ -12,6 +12,10 @@ class RoutingTable(object):
         self.src_node = source.name()
         self.ip = source.ip
         self.port = source.port
+        self.own_edges = dict()
+
+        # add own edges
+        self.own_edges = dict((n.name(), [n.weight, self.src_node]) for n in neighbor_list)
 
         # initialize table for every node
         self.table[self.src_node] = {}
@@ -41,12 +45,12 @@ class RoutingTable(object):
         p_vector = self.table[p_name]
         update = False
 
-
         # check if there's a new connection to this node
         if p_name not in src_vector and self.src_node in p_vector:
             print 'New connection to {}'.format(p_name)
             # add edge to this node's vector
             src_vector[p_name] = [p_vector[self.src_node][0], self.src_node]
+            self.own_edges[p_name] = [p_vector[self.src_node][0], self.src_node]
             update = True
 
         # check if a cheaper connection exists
@@ -63,6 +67,14 @@ class RoutingTable(object):
 
     def remove_node(self, node_name):
         """ Remove all links directly from this node to node_name"""
+        # in set of own edges
+        if node_name in self.own_edges:
+            del self.own_edges[node_name]
+
+        # if has a set of edges
+        if node_name in self.table:
+            del self.table[node_name]
+
         # first step in path to node
         for dest, (cost, first_step) in self.table[self.src_node].items():
             if first_step == node_name:
@@ -82,37 +94,37 @@ class RoutingTable(object):
         changes = False
         # all nodes with a direct connection or connection from a neighbor
         destinations = set(
-            [r for n in self.table.values() for r in n.keys()])
+            [r for n in self.table.values() for r in n.keys() if r != self.src_node] +
+            self.own_edges.keys())
 
         # find the cheapest path to all these nodes
-        for dest in destinations:
-            cost = self.table[self.src_node].get(dest, [None, None])
+        for goal_dest in destinations:
+            cost = self.table[self.src_node].get(goal_dest, [None, None])
             possible_costs = []
             # loop possible first steps
-            for step1, (cost1, step0) in self.table[self.src_node].iteritems():
-                # one step solution
-                if step1 == dest:
+            # start with step0, eventually to mid_dest, then step1
+            for mid_dest, (cost1, step0) in self.table[self.src_node].items() + self.own_edges.items():
+                if mid_dest == goal_dest:
                     possible_costs.append([cost1, step0])
                 # loop looking for second steps
-                if step1 in self.table:
-                    for n_dest, (cost2, step2) in self.table[step1].iteritems():
-                        # 1. check destination is correct
-                        # 2. check not using a zero distance vector
-                        # 3. check poison reverse
-                        if n_dest == dest and n_dest != step2 and step1 != step2:
-                            possible_costs.append([cost1 + cost2, step1])
+                if mid_dest in self.table:
+                    for dest, (cost2, step1) in self.table[mid_dest].iteritems():
+                        # if right destination & doesn't end with 0 steps
+                        if dest == goal_dest and dest != step1:
+                            if self.src_node != step1: # prevent looping
+                                possible_costs.append([cost1 + cost2, mid_dest])
 
-            if not possible_costs:
+            # skip if no options
+            if not possible_costs:  
                 continue
             # assign the smallest one
             likely_min = min(possible_costs)
-            # default to former path if cost unchanged
+            # ignore if cost unchanged
             if likely_min[0] != cost[0]:
-                self.table[self.src_node][dest] = likely_min
+                self.table[self.src_node][goal_dest] = likely_min
                 changes = True
 
         return changes
-
 
     def link_up(self, node_name, weight):
         """ Adds to routing table, returns True if changes are made """

@@ -25,7 +25,8 @@ class RoutingTable(object):
 
         # set known neighbor values
         for neighbor in neighbor_list + [source]:
-            self.table[self.src_node][neighbor.name()] = [neighbor.weight, self.src_node]
+            self.table[self.src_node][neighbor.name()] = [neighbor.weight,
+                                                          self.src_node]
 
 
     def update(self, packet):
@@ -45,7 +46,8 @@ class RoutingTable(object):
 
         # update if link with neighbor cost is now cheaper
         if neighbor_vector[self.src_node][0] < self.table[self.src_node][neighbor_name][0]:
-            self.table[self.src_node][neighbor_name] = [neighbor_vector[self.src_node][0], self.src_node]
+            self.table[self.src_node][neighbor_name] = (
+                    [neighbor_vector[self.src_node][0], self.src_node])
             update = True
 
         return update or self.__recompute()
@@ -71,12 +73,13 @@ class RoutingTable(object):
 
     def link_down(self, node_name):
         """ Takes down a link and returns the pkt string """
-        if node_name in self.table[self.src_node]:
+        # if the node exists and isn't already INF
+        if (node_name in self.table[self.src_node] and
+                self.table[self.src_node][node_name] != [float('inf'), 'N/A']):
             self.table[self.src_node][node_name] = [float('inf'), 'N/A']
-            print 'New routing table:\n', self
-        else:
-            print "Node, {}, not found in routing table".format(node_name)
-        return self.transmit_linkdown(node_name)
+            print 'Removed link to {}'.format(node_name)
+            return self.transmit_linkdown(node_name)
+        return None
 
 
     def transmit_linkdown(self, node_name):
@@ -84,7 +87,9 @@ class RoutingTable(object):
             "type": RT_LINKDOWN,
             "name": self.src_node,
             "data": {
-                "name": node_name
+                # transmit our own name since we want the recieving node to
+                # ignore the transmitted 
+                "name": self.src_node  
             }
         })
 

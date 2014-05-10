@@ -65,12 +65,14 @@ class Client(object):
         # start broadcast timer
         self.broadcast_rt()
 
+
     def reset_broadcast(self):
         """ Resests the timer on the broadcast """
         if hasattr(self, 'broadcast_timer'):
             self.broadcast_timer.cancel()
         self.broadcast_timer = Timer(self.timeout, self.broadcast_rt)
         self.broadcast_timer.start()
+
 
     def broadcast_rt(self):
         """ Broadcasts the distance vector to all neighbors """
@@ -79,11 +81,13 @@ class Client(object):
                                self.transmit_conn)
         self.reset_broadcast()
 
+
     def update_rt(self, packet):
         """ called with an incoming packet that has a new distance vector """
         if self.routing_table.update(packet):
             # broadcast if change
             self.reset_broadcast()
+
 
     def reset_timeout_node(self, node_name):
         """ Reset the timer to remove a neighboring node """
@@ -93,27 +97,40 @@ class Client(object):
                                          args=[node_name])
         self.timeouts[node_name].start()
 
+
     def timeout_node(self, node_name):
         """ Remove a node that hasn't been active in 3 * timeout """
         self.remove_node(node_name)
         print '{} timed out'.format(node_name)
+
 
     def remove_node(self, node_name):
         """ Removes a node from this neighbor and informs the node that the
             connection is down
         """
         # remove from routing table and notify node
-        self.neighbors[node_name].message(
-            self.routing_table.link_down(node_name),
-            self.transmit_conn
-        )
-        # cancel timeout
+        msg = self.routing_table.link_down(node_name)
+        if msg:
+            self.neighbors[node_name].message(msg, self.transmit_conn)
+        # cancel timeout timer
         self.timeouts[node_name].cancel()
         del self.timeouts[node_name]
-        # broadcast new routing table
-        self.broadcast_rt()
         # don't message node
         self.neighbors[node_name].ignore = True
+        # broadcast new routing table
+        self.broadcast_rt()
+
+
+    def shutdown_node(self):
+        close_msg = self.routing_table.transmit_linkdown(self.name)
+        for neighbor in self.neighbors.values():
+            neighbor.message(close_msg, self.transmit_conn)
+        self.broadcast_timer.cancel()
+        for t in self.timeouts.values():
+            t.cancel()
+        print 'SHUTTING DOWN NODE'
+        exit(0)
+
 
     def add_node(self, node_name, pkt_data):
         """ stop ignoring a node and add it if necessary """
@@ -136,15 +153,19 @@ class Client(object):
         self.reset_timeout_node(node_name)
 
         print pkt['type']
+        print pkt['data']
 
         # Process update to routing table
         if pkt['type'] == routing_table.RT_UPDATE:
-            self.update_rt(pkt)
-            self.add_node(pkt['name'], pkt['data'])
+            if not self.neighbors[pkt['name']].ignore:
+                self.update_rt(pkt)
+                self.add_node(pkt['name'], pkt['data'])
 
         # Turn off a link and ignore node
         elif pkt['type'] == routing_table.RT_LINKDOWN:
-            self.remove_node(pkt['name'])
+            down_node = pkt['data']['name']
+            self.routing_table.link_down(down_node)
+            self.neighbors[down_node].ignore = True
 
         # Stop ignoring a node that has been linked up
         elif pkt['type'] == routing_table.RT_LINKUP:
@@ -163,7 +184,6 @@ class Client(object):
                 return
             down_node = '{}:{}'.format(args[0], args[1])
             self.remove_node(down_node)
-
 
         # add a link to a neighbor and broadcast it
         elif command == 'LINKUP':
@@ -186,14 +206,7 @@ class Client(object):
 
         # close down the connection
         elif command == 'CLOSE':
-            close_msg = self.routing_table.transmit_linkdown(self.name)
-            for neighbor in self.neighbors.values():
-                neighbor.message(close_msg, self.transmit_conn)
-            self.broadcast_timer.cancel()
-            for t in self.timeouts.values():
-                t.cancel()
-            print 'SHUTTING DOWN NODE'
-            exit(0)
+            self.shutdown_node()
 
         elif command == 'TRANSFER':
             pass

@@ -5,12 +5,10 @@ class Node(object):
         self.ip = ip
         self.port = port
         self.weight = weight
-        self.ignore = False
 
     def update_rt(self, rt_str, conn):
-        if not self.ignore:
-            conn.sendto(rt_str, (self.ip, self.port))
-            print 'sent rt to ',  self.ip, self.port
+        conn.sendto(rt_str, (self.ip, self.port))
+        print 'sent rt to ',  self.ip, self.port
     
     def message(self, msg, conn):
         conn.sendto(msg, (self.ip, self.port))

@@ -16,7 +16,6 @@ class Client(object):
 
     def __init__(self, config_file):
         """ Configure the bfclient from the config_file """
-        self.ip = socket.gethostbyname(socket.gethostname())
         self.ip = '127.0.0.1'
         self.name = None
         self.port = None
@@ -24,9 +23,11 @@ class Client(object):
         self.file_chunk = None
         self.chunk_number = None
         self.neighbors = dict()
+        self.ignore_neighbors = set()
         self.udp = None
         self.routing_table = None
         self.transmit_conn = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.timeouts = dict()
 
         with open(config_file, 'r') as f:
             config = f.readline().strip().split()
@@ -41,6 +42,7 @@ class Client(object):
                 ip, port = ip_port.split(":")
                 name = "{}:{}".format(ip, port)
                 self.neighbors[name] = node.Node(ip, int(port), float(weight))
+                self.reset_timeout_node(name)
                 
 
         # validation
@@ -54,9 +56,7 @@ class Client(object):
         # create routing table
         self.name = "{}:{}".format(self.ip, self.port)
         self.routing_table = routing_table.RoutingTable(
-                self.name, self.neighbors.values(), node.Node(self.ip,
-                                                              self.port, 0))
-        self.timeouts = dict()
+                self.neighbors.values(), node.Node(self.ip, self.port, 0))
 
         # make socket
         self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -77,8 +77,10 @@ class Client(object):
     def broadcast_rt(self):
         """ Broadcasts the distance vector to all neighbors """
         for neighbor in self.neighbors.values():
-            neighbor.update_rt(self.routing_table.transmit_str(),
-                               self.transmit_conn)
+            if neighbor.name() not in self.ignore_neighbors:
+                neighbor.update_rt(
+                        self.routing_table.transmit_str(neighbor.weight),
+                        self.transmit_conn)
         self.reset_broadcast()
 
 
@@ -104,73 +106,60 @@ class Client(object):
         print '{} timed out'.format(node_name)
 
 
-    def remove_node(self, node_name):
-        """ Removes a node from this neighbor and informs the node that the
-            connection is down
-        """
-        # remove from routing table and notify node
-        msg = self.routing_table.link_down(node_name)
-        if msg:
-            self.neighbors[node_name].message(msg, self.transmit_conn)
-        # cancel timeout timer
-        self.timeouts[node_name].cancel()
-        del self.timeouts[node_name]
-        # don't message node
-        self.neighbors[node_name].ignore = True
-        # broadcast new routing table
-        self.broadcast_rt()
+    def remove_node(self, node_name, ignore=False):
+        """ Removes a node from this neighbor """
+        if node_name in self.timeouts:  # cancel timeout timer
+            self.timeouts[node_name].cancel()
+            del self.timeouts[node_name]
+        if node_name in self.neighbors:
+            del self.neighbors[node_name]  # remove node from neighbors
+        self.broadcast_rt()  # broadcast new routing table
+        if ignore:
+            self.ignore_neighbors.add(node_name)
 
 
     def shutdown_node(self):
-        close_msg = self.routing_table.transmit_linkdown(self.name)
-        for neighbor in self.neighbors.values():
-            neighbor.message(close_msg, self.transmit_conn)
+        """ Shuts donw the node. Others will let it timeout """
+        # cancel timer threads
         self.broadcast_timer.cancel()
         for t in self.timeouts.values():
             t.cancel()
+        # close process
         print 'SHUTTING DOWN NODE'
         exit(0)
 
 
-    def add_node(self, node_name, pkt_data):
-        """ stop ignoring a node and add it if necessary """
-        update = False
-        if self.neighbors[node_name].ignore:
-            self.neighbors[node_name].ignore = False
-            update = True
-        if node_name not in self.neighbors:
-            self.neighbors[node_name] = node.Node(pkt_data['ip'],
-                                                    pkt_data['port'],
-                                                    pkt_data['weight'])
-            update = True
-        if update:
-            self.broadcast_rt()
+    def add_node(self, pkt):
+        """ add a node, stop an ignore if necessary """
+        node_name = pkt['name']
+        ip, port = pkt['ip'], pkt['port']
+        self.ignore_neighbors.discard(node_name)  # stop ignoring node
+        self.neighbors[node_name] = node.Node(ip, port, pkt['weight'])
+        self.routing_table.link_up(node_name, pkt['weight'])
+        self.broadcast_rt()
 
 
-    def process_pkt(self, pkt):
+    def process_pkt(self, pkt, ip, port):
         """ Process a packet that is received on the UDP socket """
         node_name = pkt['name']
         self.reset_timeout_node(node_name)
 
         print pkt['type']
-        print pkt['data']
 
         # Process update to routing table
-        if pkt['type'] == routing_table.RT_UPDATE:
-            if not self.neighbors[pkt['name']].ignore:
-                self.update_rt(pkt)
-                self.add_node(pkt['name'], pkt['data'])
+        if pkt['type'] == routing_table.RT_UPDATE and node_name not in self.ignore_neighbors:
+            # if a new neighbor
+            if node_name not in self.neighbors:
+                self.add_node(pkt)
 
-        # Turn off a link and ignore node
-        elif pkt['type'] == routing_table.RT_LINKDOWN:
-            down_node = pkt['data']['name']
-            self.routing_table.link_down(down_node)
-            self.neighbors[down_node].ignore = True
+            # if not an ignored neighbor
+            if node_name not in self.ignore_neighbors:
+                self.update_rt(pkt)
 
         # Stop ignoring a node that has been linked up
         elif pkt['type'] == routing_table.RT_LINKUP:
-            self.add_node(pkt['name'], pkt['data'])
-
+            self.add_node(pkt)
+            self.update_rt(pkt)
 
 
     def process_command(self, command, args):
@@ -183,7 +172,7 @@ class Client(object):
                 print 'USUAGE:\n\tLINKDOWN <ip addr> <port>'
                 return
             down_node = '{}:{}'.format(args[0], args[1])
-            self.remove_node(down_node)
+            self.remove_node(down_node, ignore=True)
 
         # add a link to a neighbor and broadcast it
         elif command == 'LINKUP':
@@ -216,12 +205,12 @@ class Client(object):
     def run(self):
         """ listen for commands an incoming messages to update the table """
         while True:
-            input, _, _ = select([self.udp, stdin], [], [], 2)
+            input, _, _ = select([self.udp, stdin], [], [])
             for s in input:
                 if s == self.udp:
                     msg, (ip, port) = s.recvfrom(BUFFER)
                     pkt = json.loads(msg)
-                    self.process_pkt(pkt)
+                    self.process_pkt(pkt, ip, port)
                 elif s == stdin:
                     user_input = stdin.readline().strip().split()
                     if len(user_input):

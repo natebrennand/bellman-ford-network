@@ -7,9 +7,11 @@ RT_LINKDOWN = "ROUTE_LINKDOWN"
 
 class RoutingTable(object):
 
-    def __init__(self, src_node, neighbor_list, source):
+    def __init__(self,neighbor_list, source):
         self.table = {} # from --> to --> [cost, first step]
-        self.src_node = src_node
+        self.src_node = source.name()
+        self.ip = source.ip
+        self.port = source.port
 
         # initialize table for every node
         self.table[self.src_node] = {}
@@ -71,17 +73,6 @@ class RoutingTable(object):
         return changes
 
 
-    def link_down(self, node_name):
-        """ Takes down a link and returns the pkt string """
-        # if the node exists and isn't already INF
-        if (node_name in self.table[self.src_node] and
-                self.table[self.src_node][node_name] != [float('inf'), 'N/A']):
-            self.table[self.src_node][node_name] = [float('inf'), 'N/A']
-            print 'Removed link to {}'.format(node_name)
-            return self.transmit_linkdown(node_name)
-        return None
-
-
     def transmit_linkdown(self, node_name):
         return json.dumps({
             "type": RT_LINKDOWN,
@@ -104,23 +95,23 @@ class RoutingTable(object):
         return True
 
 
-    def transmit_linkup(self, n):
+    def linkup_str(self, dest_weight):
+        """ Broadcast message for RT_UPDATE """
         return json.dumps({
             "type": RT_LINKUP,
             "name": self.src_node,
-            "data": {
-                "name": n.name,
-                "ip": n.ip,
-                "port": n.port,
-                "weight": n.weight
-            }
+            "weight": dest_weight
         })
 
 
-    def transmit_str(self):
+    def transmit_str(self, dest_weight):
+        """ Broadcast message for RT_UPDATE """
         return json.dumps({
             "type": RT_UPDATE,
             "name": self.src_node,
+            "weight": dest_weight,
+            "ip": self.ip,
+            "port": self.port,
             "data": self.table[self.src_node]
         })
 

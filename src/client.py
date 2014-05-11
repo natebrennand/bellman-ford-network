@@ -212,7 +212,7 @@ class Client(object):
             with open(OUTPUT_FILE, 'wb+') as f:
                 for i in xrange(1, self.recieved_chunks[0]+1):
                     f.write(self.recieved_chunks[1][str(i)].decode('hex'))
-            self.recieved_chunk = (0, dict())
+            self.recieved_chunks = (0, dict())
 
 
     def process_pkt(self, pkt, ip, port):
@@ -315,6 +315,10 @@ class Client(object):
                 ))
                 
             self.broadcast_get_file()
+
+        elif command == 'STATUS':
+            print "{} of {} file chunks received".format(
+                    len(self.recieved_chunks[1]), self.num_chunks)
 
         else:
             print 'Command not recognized'

@@ -17,6 +17,11 @@ Execute the `bfclient.py` file with a config file passed as an argument.
 python bfclient.py config.txt
 ```
 
+
+### Output
+
+Timeouts and new connections are noted in the output of the client.
+
 ### Config Files
 
 The config files follow the specified format with one addition, the user can specify the number of chunks to the file as a 5th parameter on the 1st line.
@@ -28,6 +33,8 @@ Chunk sequence numbers are 1 indexed.
 
 In some linux distributions (not the one CLIC is running), the commands used to get the local IP may return 127.0.0.1 due to the hosts file.
 This causes errors in how the client binds to a port.
+
+To cleanly exit you must use the `close` command, otherwise the additional threads running will not exit immediately.
 
 ### Test Files
 
@@ -60,6 +67,7 @@ Basic format:
 - data: routing table or image chunk
 
 The exact specs can be viewed within the `routing_table.py` file.
+There is a bit of redundant information (`ip` for instance) included for ease of use.
 
 I experimented with using the gzip Python library but the compression gained was very meager so I chose to not add complexity.
 
@@ -82,16 +90,22 @@ I experimented with using the gzip Python library but the compression gained was
 
 ### Linkup
 
+command: `LINKUP <ip> <port> <weight>`
+
 Can be used both to relink a node with the specified cost.
 Can also be used to change the weight of an existing node if it's cheaper a cheaper weight.
 
 ### Linkdown
+
+command: `LINKDOWN <ip> <port>`
 
 Linkdown works as described in the assignment.
 After severing the link to the specified neighbor, the new routing table is broadcasted to all other neighbors and that specified neighbor is ignored for 4 * timeout.
 The link can then be remade from either of the two nodes.
 
 ### Show RT
+
+command: `SHOWRT`
 
 The SHOWRT command works as specified in the assignment.
 The cheapest routes to all nodes known in the network are displayed.
@@ -129,12 +143,16 @@ Recieved all 2 chunks, writing file to ouput
 
 ### Transfer
 
+command: `TRANSFER <ip> <port>`
+
 This transfers the file chunk (if there is one) to the specified recipient.
 Nodes who the file is routed through will print out a message when the chunk passes through them.
 When a file chunk is received the path they took is printed out.
 Once the receiving node has recieved all file chunks, they are written to `output`.
 
 ### Get
+
+command: `GET`
 
 This command broadcasts a request to all nodes in the network asking to be sent the file chunks.
 The calling node is then forwarded all file chunks.
@@ -143,6 +161,10 @@ Upon having every chunk for the file, they are written to `output`.
 
 
 ### Status
+
+command: `STATUS`
+
+example output: `1 of 2 file chunks received`
 
 This command prints out the status of the file receiving process for the node it is called on.
 It will display how many chunks have been recived of the number expected.

@@ -47,7 +47,13 @@ class RoutingTable(object):
         update = False
 
         # check if there's a new connection to this node
-        if p_name not in src_vector and self.src_node in p_vector:
+        if p_name not in self.own_edges and self.src_node in p_vector:
+            print 'p_name:', p_name
+            print 'p vector', p_vector
+            print 'src node:', self.src_node
+            print 'src_vector:', src_vector
+
+
             print 'New connection to {}'.format(p_name)
             # add edge to this node's vector
             src_vector[p_name] = [p_vector[self.src_node][0], self.src_node]
@@ -55,7 +61,7 @@ class RoutingTable(object):
             update = True
 
         # check if a cheaper connection exists
-        elif self.src_node in p_vector:
+        elif self.src_node in p_vector and p_name in src_vector:
             other_cost = p_vector[self.src_node]
             our_cost = src_vector[p_name]
             if (other_cost[0] < our_cost[0] and  # cheaper
@@ -75,7 +81,6 @@ class RoutingTable(object):
             return
 
         # if has a set of edges
-        #if node_name in self.table:
         del self.table[node_name]
 
         # first step in path to node
@@ -108,36 +113,40 @@ class RoutingTable(object):
                 for d in vector.keys():
                     destinations.add(d)
 
+        # viable first steps
+        first_steps = self.own_edges.items()
+
         # find the cheapest path to all these nodes
-        for goal_dest in destinations:
-            cost = self.table[self.src_node].get(goal_dest, [None, None])
+        # A --> B --> C --> D / Dest
+        for dest in destinations:
+            current_cost = self.table[self.src_node].get(dest, [None, None])
             possible_costs = []
             # loop possible first steps
-            # start with step0, eventually to mid_dest, then step1
-            for mid_dest, (cost1, step0) in self.table[self.src_node].items() + self.own_edges.items():
-                if mid_dest == goal_dest:
-                    possible_costs.append([cost1, step0])
+            # start with A, eventually to B, then C
+            for B, (cost1, A) in first_steps:
+                if B == dest:
+                    possible_costs.append([cost1, A])
+                    continue
                 # loop looking for second steps
-                if mid_dest in self.table:
-                    for dest, (cost2, step1) in self.table[mid_dest].iteritems():
-                        # if right destination & doesn't end with 0 steps
-                        if dest == goal_dest and dest != step1:
-                            if self.src_node != step1: # prevent looping
-                                possible_costs.append([cost1 + cost2, mid_dest])
+                for D, (cost2, C) in self.table[B].iteritems():
+                    # if right destination & doesn't end with 0 steps & doesn't stat w/ 0 steps
+                    if D == dest and C != D and A != B:
+                        if self.src_node != C: # prevent looping
+                            possible_costs.append([cost1 + cost2, B])
 
             # skip if no options
             if not possible_costs:  
                 continue
             # assign the smallest one
             likely_min = min(possible_costs)
-            # ignore if cost unchanged
-            if likely_min[0] != cost[0]:
-                new_table_vector[goal_dest] = likely_min
-                #print goal_dest, likely_min
+            # ignore if current_cost unchanged
+            if likely_min[0] != current_cost[0]:
+                new_table_vector[dest] = likely_min
+                #print dest, likely_min
                 changes = True
             else:
-                new_table_vector[goal_dest] = cost
-                #print goal_dest, cost
+                new_table_vector[dest] = current_cost
+                #print dest, current_cost
 
         # if size of vector is different
         if len(new_table_vector) != len(self.table[self.src_node]):

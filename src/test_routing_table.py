@@ -24,7 +24,7 @@ def make_node_11():
     return node11, node11_routing_table
 
 def make_node_13():
-    node13 = node.Node('123', 11, 0)
+    node13 = node.Node('123', 13, 0)
     neighbors_13 = [
         node.Node('123', 10, 5),
         node.Node('123', 11, 7),
@@ -119,6 +119,21 @@ class TestRoutingTable(unittest.TestCase):
 
         self.assertDictEqual(a_rt.table, temp_rt.table)
 
+    def test_remove_link(self):
+        a, a_rt = make_node_10()
+        b, b_rt = make_node_11()
+        c, c_rt = make_node_13()
 
+        self.__update(a_rt, b, b_rt)
+        self.__update(b_rt, a, a_rt)
 
+        self.__update(b_rt, c, c_rt)
+        self.__update(c_rt, b, b_rt)
+
+        self.__update(a_rt, c, c_rt)
+        self.__update(c_rt, a, a_rt)
+
+        # delete link between 
+
+        #self.assertFalse(True)
 

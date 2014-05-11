@@ -145,7 +145,7 @@ class Client(object):
         ip, port = pkt['ip'], pkt['port']
         self.ignore_neighbors.discard(node_name)  # stop ignoring node
         self.neighbors[node_name] = node.Node(ip, port, pkt['weight'])
-        self.routing_table.link_up(node_name, pkt['weight'])
+        self.routing_table.update(pkt)
         self.broadcast_rt()
 
 
@@ -154,7 +154,7 @@ class Client(object):
         node_name = pkt['name']
         self.reset_timeout_node(node_name)
 
-        print pkt['type']
+        print pkt['type'], ' FROM ', node_name
 
         # Process update to routing table
         if pkt['type'] == routing_table.RT_UPDATE and node_name not in self.ignore_neighbors:
@@ -162,9 +162,7 @@ class Client(object):
             if node_name not in self.neighbors:
                 self.add_node(pkt)
 
-            # if not an ignored neighbor
-            if node_name not in self.ignore_neighbors:
-                self.update_rt(pkt)
+            self.update_rt(pkt)
 
         # Stop ignoring a node that has been linked up
         elif pkt['type'] == routing_table.RT_LINKUP:
@@ -205,6 +203,7 @@ class Client(object):
 
         # print out the current routing table
         elif command == 'SHOWRT':
+            print 'IGNORING:', self.ignore_neighbors
             print self.routing_table
 
         # close down the connection

@@ -135,5 +135,6 @@ class TestRoutingTable(unittest.TestCase):
 
         # delete link between 
 
-        #self.assertFalse(True)
 
+if __name__ == '__main__':
+    unittest.main()

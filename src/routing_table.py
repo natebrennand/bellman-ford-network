@@ -1,9 +1,17 @@
 
 import json
+from datetime import datetime
 
 RT_UPDATE = "ROUTE_UPDATE"
 RT_LINKUP = "ROUTE_LINKUP"
 RT_LINKDOWN = "ROUTE_LINKDOWN"
+RT_TRANSFER = "CHUNK_TRANSFER"
+
+DT_FORMAT = "%m/%d/%Y %H:%M:%S.%f"
+
+def get_current_timestamp():
+    return datetime.now().strftime(DT_FORMAT)
+
 
 class RoutingTable(object):
 
@@ -41,6 +49,17 @@ class RoutingTable(object):
         self.own_edges[node_name] = [weight, self.src_node]
         self.table[self.src_node][node_name] = [weight, self.src_node]
 
+
+    def first_step(self, dest):
+        if dest in self.table[self.src_node]:
+            step =  self.table[self.src_node][dest][1]
+            if step == self.src_node:
+                step = dest
+            ip, port = step.split(':')
+            return ip, int(port)
+        return None, None
+
+
     def update(self, packet):
         """ Uopdate neighboring node; makes adjacent edge adjustments """
         # see transmit_str() for format of packet
@@ -52,12 +71,6 @@ class RoutingTable(object):
 
         # check if there's a new connection to this node
         if p_name not in self.own_edges and self.src_node in p_vector:
-            print 'p_name:', p_name
-            print 'p vector', p_vector
-            print 'src node:', self.src_node
-            print 'src_vector:', src_vector
-
-
             print 'New connection to {}'.format(p_name)
             # add edge to this node's vector
             src_vector[p_name] = [p_vector[self.src_node][0], self.src_node]
@@ -146,11 +159,9 @@ class RoutingTable(object):
             # ignore if current_cost unchanged
             if likely_min[0] != current_cost[0]:
                 new_table_vector[dest] = likely_min
-                #print dest, likely_min
                 changes = True
             else:
                 new_table_vector[dest] = current_cost
-                #print dest, current_cost
 
         # if size of vector is different
         if len(new_table_vector) != len(self.table[self.src_node]):
@@ -184,8 +195,29 @@ class RoutingTable(object):
         })
 
 
+    def make_transmit_chunk(self,dest_ip, dest_port, data, seq, num):
+        # will make the initial packet
+        destination = "{}:{}".format(dest_ip, dest_port)
+        packet = {
+            "type": RT_TRANSFER,
+            "name": self.src_node,
+            "destination": destination,
+            "dest_ip": dest_ip,
+            "dest_port": dest_port,
+            "data": data,
+            "seq_num": seq,
+            "num_chunks": num,
+            "steps": []
+        }
+        return packet
+
+
+    def transmit_chunk(self, packet):
+        packet['steps'].append([self.src_node, get_current_timestamp()])
+        return json.dumps(packet)
+
+
     def __str__(self):
-        print self.own_edges
         rt = ""
         for client, (cost, first_step) in self.table[self.src_node].iteritems():
             rt += "Destination = {}, Cost = {}, Link = ({})\n".format(

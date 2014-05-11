@@ -10,24 +10,30 @@ import node
 import routing_table
 
 
-BUFFER = 1024
+BUFFER = 1024**2
+OUTPUT_FILE = 'ouput'
 
 class Client(object):
 
     def __init__(self, config_file):
         """ Configure the bfclient from the config_file """
         self.ip = '127.0.0.1'
+        self.ip = socket.gethostbyname(socket.gethostname())
         self.name = None
         self.port = None
         self.timeout = None
-        self.file_chunk = None
-        self.chunk_number = None
         self.neighbors = dict()
         self.ignore_neighbors = set()
         self.udp = None
         self.routing_table = None
         self.transmit_conn = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.transmit_conn.setsockopt(socket.SOL_SOCKET,socket.SO_SNDBUF,70000)
         self.timeouts = dict()
+
+        self.file_chunk = None
+        self.chunk_number = None
+        self.num_chunks = 2
+        self.recieved_chunks = (0, dict())
 
         with open(config_file, 'r') as f:
             config = f.readline().strip().split()
@@ -36,6 +42,8 @@ class Client(object):
             if len(config) == 4:
                 self.file_chunk = config[2]
                 self.chunk_number = config[3]
+            if len(config) == 5:
+                self.num_chunks[4]
 
             for line in f:
                 ip_port, weight = line.strip().split()
@@ -48,9 +56,7 @@ class Client(object):
         # validation
         if self.file_chunk and not path.isfile(self.file_chunk):
             print 'File chunk, {}, does not exist'.format(self.file_chunk)
-            exit(1)
-        if not len(self.neighbors):
-            print 'There must be more than 0 neighboring nodes on startup'
+            self.shutdown_node()
             exit(1)
 
         # create routing table
@@ -147,27 +153,52 @@ class Client(object):
         self.ignore_neighbors.discard(node_name)  # stop ignoring node
         self.neighbors[node_name] = node.Node(ip, port, pkt['weight'])
         if 'data' in pkt:  # regular update
-            print
-            print 'CALLING UPDATE'
-            print
             self.routing_table.update(pkt)
         elif 'weight' in pkt:  # link up
-            print
-            print 'ADDING NODE NOW'
-            print
             self.routing_table.add_neighbor(node_name, pkt['weight'])
         self.broadcast_rt()
+
+
+    def forward_chunk(self, pkt):
+        ip, port = self.routing_table.first_step(pkt['destination'])
+        if not ip:
+            print 'No link to {} fround from {}, canceling transfer of chunk {}'.format(
+                pkt['destination'], self.name, pkt['seq_num']
+            )
+            return
+
+        transfer_node = node.Node(ip, port, None)
+        transfer_node.message(self.routing_table.transmit_chunk(pkt), self.transmit_conn)
+        print 'Forward chunk {} to {}, dest={}'.format(pkt['seq_num'],
+                                                     '{}:{}'.format(ip, port),
+                                                     pkt['destination'])
+
+
+    def recieve_chunk(self, pkt):
+        if not self.recieved_chunks[0]:
+            self.recieved_chunks = (pkt['num_chunks'], dict())
+        self.recieved_chunks[1][pkt['seq_num']] = pkt['data']
+        print 'Recieved chunk #{} from {}'.format(pkt['seq_num'], pkt['name'])
+        print 'Steps:'
+        print '\n'.join(['{} Step #{} @ {}'.format(dt, i+1, n)
+                for i, (n, dt) in enumerate(pkt['steps'])])
+
+        if len(self.recieved_chunks[1]) == self.recieved_chunks[0]:
+            print 'Recieved all {} chunks, writing file to {}'.format(
+                    self.recieved_chunks[0], OUTPUT_FILE)
+            with open(OUTPUT_FILE, 'wb+') as f:
+                for i in xrange(1, self.recieved_chunks[0]+1):
+                    f.write(self.recieved_chunks[1][str(i)].decode('hex'))
+            self.recieved_chunk = (0, dict())
 
 
     def process_pkt(self, pkt, ip, port):
         """ Process a packet that is received on the UDP socket """
         node_name = pkt['name']
-        self.reset_timeout_node(node_name)
-
-        print pkt['type'], ' FROM ', node_name
 
         # Process update to routing table
         if pkt['type'] == routing_table.RT_UPDATE and node_name not in self.ignore_neighbors:
+            self.reset_timeout_node(node_name)
             # if a new neighbor
             if node_name not in self.neighbors:
                 self.add_node(pkt)
@@ -176,8 +207,16 @@ class Client(object):
 
         # Stop ignoring a node that has been linked up
         elif pkt['type'] == routing_table.RT_LINKUP:
+            self.reset_timeout_node(node_name)
             self.add_node(pkt)
             self.update_rt(pkt)
+
+        # forward or recieve a chunk
+        elif pkt['type'] == routing_table.RT_TRANSFER:
+            if pkt['destination'] == self.name:
+                self.recieve_chunk(pkt)
+            else:
+                self.forward_chunk(pkt)
 
 
     def process_command(self, command, args):
@@ -221,8 +260,21 @@ class Client(object):
         elif command == 'CLOSE':
             self.shutdown_node()
 
+        # transfer this node's file chunk to a destination
         elif command == 'TRANSFER':
-            pass
+            if len(args) != 2:
+                print 'USUAGE:\n\tTRANSFER <ip addr> <port>'
+                return
+            elif not self.file_chunk or not self.chunk_number:
+                print 'There is no file chunk declared for this node'
+                print 'please alter the config and restart the node'
+                return
+            ip_addr, port = args[0], int(args[1])
+            with open(self.file_chunk) as f:
+                data = f.read().encode('hex')
+            self.forward_chunk(self.routing_table.make_transmit_chunk(
+                ip_addr, port, data, self.chunk_number, self.num_chunks))
+
         else:
             print 'Command not recognized'
 

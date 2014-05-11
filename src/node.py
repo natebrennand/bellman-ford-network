@@ -8,7 +8,6 @@ class Node(object):
 
     def update_rt(self, rt_str, conn):
         conn.sendto(rt_str, (self.ip, self.port))
-        print 'sent rt to ',  self.ip, self.port
     
     def message(self, msg, conn):
         conn.sendto(msg, (self.ip, self.port))

@@ -37,6 +37,10 @@ class RoutingTable(object):
                                                           self.src_node]
 
 
+    def add_neighbor(self, node_name, weight):
+        self.own_edges[node_name] = [weight, self.src_node]
+        self.table[self.src_node][node_name] = [weight, self.src_node]
+
     def update(self, packet):
         """ Uopdate neighboring node; makes adjacent edge adjustments """
         # see transmit_str() for format of packet

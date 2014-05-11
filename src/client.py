@@ -106,8 +106,9 @@ class Client(object):
 
     def timeout_node(self, node_name):
         """ Remove a node that hasn't been active in 3 * timeout """
-        self.remove_node(node_name)
-        print '{} timed out'.format(node_name)
+        if node_name not in self.ignore_neighbors:
+            self.remove_node(node_name)
+            print '{} timed out'.format(node_name)
 
 
     def remove_node(self, node_name, ignore=False):
@@ -145,7 +146,16 @@ class Client(object):
         ip, port = pkt['ip'], pkt['port']
         self.ignore_neighbors.discard(node_name)  # stop ignoring node
         self.neighbors[node_name] = node.Node(ip, port, pkt['weight'])
-        self.routing_table.update(pkt)
+        if 'data' in pkt:  # regular update
+            print
+            print 'CALLING UPDATE'
+            print
+            self.routing_table.update(pkt)
+        elif 'weight' in pkt:  # link up
+            print
+            print 'ADDING NODE NOW'
+            print
+            self.routing_table.add_neighbor(node_name, pkt['weight'])
         self.broadcast_rt()
 
 
@@ -194,10 +204,11 @@ class Client(object):
                 print 'USUAGE:\n\tLINKUP <ip addr> <port> <weight>'
                 print '<weight> must be a number'
                 return
-            self.add_node(self, {
+            print 'CALLING ADD_NODE() HERE w/ ', up_node
+            self.add_node({
                 'name': up_node,
                 'ip': args[0],
-                'port': args[1],
+                'port': int(args[1]),
                 'weight': weight
             })
 

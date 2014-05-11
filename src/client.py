@@ -167,11 +167,34 @@ class Client(object):
             )
             return
 
-        transfer_node = node.Node(ip, port, None)
-        transfer_node.message(self.routing_table.transmit_chunk(pkt), self.transmit_conn)
-        print 'Forward chunk {} to {}, dest={}'.format(pkt['seq_num'],
-                                                     '{}:{}'.format(ip, port),
-                                                     pkt['destination'])
+        next_step = '{}:{}'.format(ip, port)
+        self.neighbors[next_step].message(
+                self.routing_table.transmit_chunk(pkt), self.transmit_conn)
+        print 'Forward chunk {} to {}, dest={}'.format(
+                pkt['seq_num'], '{}:{}'.format(ip, port), pkt['destination'])
+
+    def forward_get_file(self, pkt):
+        ip, port = self.routing_table.first_step(pkt['destination'])
+        if not ip or not port:
+            print 'No route to {} found'.format(pkt['destination'])
+            return
+        next_step = '{}:{}'.format(ip, port)
+        if next_step == self.name:
+            return
+        self.neighbors[next_step].message(json.dumps(pkt), self.transmit_conn)
+
+
+    def broadcast_get_file(self):
+        for dest in self.routing_table.reachable_list():
+            pkt = self.routing_table.broadcast_transmit_str(dest)
+            self.forward_get_file(pkt)
+            
+
+    def send_file_chunk(self, ip_addr, port):
+        with open(self.file_chunk) as f:
+            data = f.read().encode('hex')
+        self.forward_chunk(self.routing_table.make_transmit_chunk(
+            ip_addr, port, data, self.chunk_number, self.num_chunks))
 
 
     def recieve_chunk(self, pkt):
@@ -217,6 +240,13 @@ class Client(object):
                 self.recieve_chunk(pkt)
             else:
                 self.forward_chunk(pkt)
+
+        elif pkt['type'] == routing_table.TRANSFER_BROADCAST:
+            if self.name == pkt['destination']:
+                if self.file_chunk:
+                    self.send_file_chunk(pkt['ip'], pkt['port'])
+                return
+            self.forward_get_file(pkt)
 
 
     def process_command(self, command, args):
@@ -269,11 +299,22 @@ class Client(object):
                 print 'There is no file chunk declared for this node'
                 print 'please alter the config and restart the node'
                 return
-            ip_addr, port = args[0], int(args[1])
-            with open(self.file_chunk) as f:
-                data = f.read().encode('hex')
-            self.forward_chunk(self.routing_table.make_transmit_chunk(
-                ip_addr, port, data, self.chunk_number, self.num_chunks))
+            self.send_file_chunk(args[0], int(args[1]))
+
+        # broadcast to have the file sent to this node
+        elif command == 'GET':
+            if self.file_chunk:
+                with open(self.file_chunk, 'rb') as f:
+                    data = f.read().encode('hex')
+                self.recieve_chunk(self.routing_table.make_transmit_chunk(
+                    self.ip,
+                    self.port,
+                    data,
+                    self.chunk_number,
+                    self.num_chunks
+                ))
+                
+            self.broadcast_get_file()
 
         else:
             print 'Command not recognized'

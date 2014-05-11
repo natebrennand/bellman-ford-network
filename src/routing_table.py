@@ -6,6 +6,7 @@ RT_UPDATE = "ROUTE_UPDATE"
 RT_LINKUP = "ROUTE_LINKUP"
 RT_LINKDOWN = "ROUTE_LINKDOWN"
 RT_TRANSFER = "CHUNK_TRANSFER"
+TRANSFER_BROADCAST = "TRANSFER_BROADCAST"
 
 DT_FORMAT = "%m/%d/%Y %H:%M:%S.%f"
 
@@ -48,6 +49,10 @@ class RoutingTable(object):
     def add_neighbor(self, node_name, weight):
         self.own_edges[node_name] = [weight, self.src_node]
         self.table[self.src_node][node_name] = [weight, self.src_node]
+
+    
+    def reachable_list(self):
+        return [dest for dest in self.table[self.src_node].keys()]
 
 
     def first_step(self, dest):
@@ -193,6 +198,16 @@ class RoutingTable(object):
             "port": self.port,
             "data": self.table[self.src_node]
         })
+
+
+    def broadcast_transmit_str(self, dest):
+        return {
+            "type": TRANSFER_BROADCAST,
+            "name": self.src_node,
+            "destination": dest,
+            "ip": self.ip,
+            "port": self.port
+        }
 
 
     def make_transmit_chunk(self,dest_ip, dest_port, data, seq, num):

@@ -3,8 +3,6 @@ import json
 from datetime import datetime
 
 RT_UPDATE = "ROUTE_UPDATE"
-RT_LINKUP = "ROUTE_LINKUP"
-RT_LINKDOWN = "ROUTE_LINKDOWN"
 RT_TRANSFER = "CHUNK_TRANSFER"
 TRANSFER_BROADCAST = "TRANSFER_BROADCAST"
 
@@ -89,6 +87,7 @@ class RoutingTable(object):
             if (other_cost[0] < our_cost[0] and  # cheaper
                     other_cost[1] == p_name):  # direct
                 src_vector[p_name] = [other_cost[0], self.src_node]
+                self.own_edges[p_name] = [other_cost[0], self.src_node]
                 update = True
 
         return update or self.__recompute()
@@ -150,11 +149,13 @@ class RoutingTable(object):
                     possible_costs.append([cost1, A])
                     continue
                 # loop looking for second steps
-                for D, (cost2, C) in self.table[B].iteritems():
-                    # if right destination & doesn't end with 0 steps & doesn't stat w/ 0 steps
-                    if D == dest and C != D and A != B:
-                        if self.src_node != C: # prevent looping
-                            possible_costs.append([cost1 + cost2, B])
+                if B in self.table:
+                    for D, (cost2, C) in self.table[B].iteritems():
+                        # if right destination & doesn't end with 0 steps &
+                        # doesn't stat w/ 0 steps
+                        if D == dest and C != D and A != B:
+                            if self.src_node != C: # prevent looping
+                                possible_costs.append([cost1 + cost2, B])
 
             # skip if no options
             if not possible_costs:  
@@ -174,18 +175,6 @@ class RoutingTable(object):
 
         self.table[self.src_node] = new_table_vector
         return changes
-
-
-    def linkup_str(self, dest_weight):
-        """ Broadcast message for RT_UPDATE """
-        return json.dumps({
-            "type": RT_LINKUP,
-            "name": self.src_node,
-            "ip": self.ip,
-            "port": self.port,
-            "weight": dest_weight,
-            "data": self.table[self.src_node]
-        })
 
 
     def transmit_str(self, dest_weight):

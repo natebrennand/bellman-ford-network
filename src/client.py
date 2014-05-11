@@ -75,6 +75,8 @@ class Client(object):
         # start broadcast timer
         self.broadcast_rt()
 
+        print 'Operating at {}:{}'.format(self.ip, self.port)
+
 
     def reset_broadcast(self):
         """ Resests the timer on the broadcast """
@@ -117,6 +119,10 @@ class Client(object):
             print '{} timed out'.format(node_name)
 
 
+    def remove_ignore(self, node_name):
+        self.ignore_neighbors.discard(node_name)
+
+
     def remove_node(self, node_name, ignore=False):
         """ Removes a node from this neighbor """
         # cancel timeout timer
@@ -132,6 +138,8 @@ class Client(object):
         self.broadcast_rt()
         if ignore:
             self.ignore_neighbors.add(node_name)
+            re_add = Timer(self.timeout*4, self.remove_ignore, args=[node_name])
+            re_add.start()
 
 
     def shutdown_node(self):
@@ -201,7 +209,8 @@ class Client(object):
         if not self.recieved_chunks[0]:
             self.recieved_chunks = (pkt['num_chunks'], dict())
         self.recieved_chunks[1][pkt['seq_num']] = pkt['data']
-        print 'Recieved chunk #{} from {}'.format(pkt['seq_num'], pkt['name'])
+        print 'Recieved chunk #{} from {} @ {}'.format(
+            pkt['seq_num'], pkt['name'], routing_table.get_current_timestamp())
         print 'Steps:'
         print '\n'.join(['{} Step #{} @ {}'.format(dt, i+1, n)
                 for i, (n, dt) in enumerate(pkt['steps'])])
@@ -226,12 +235,6 @@ class Client(object):
             if node_name not in self.neighbors:
                 self.add_node(pkt)
 
-            self.update_rt(pkt)
-
-        # Stop ignoring a node that has been linked up
-        elif pkt['type'] == routing_table.RT_LINKUP:
-            self.reset_timeout_node(node_name)
-            self.add_node(pkt)
             self.update_rt(pkt)
 
         # forward or recieve a chunk
@@ -283,7 +286,6 @@ class Client(object):
 
         # print out the current routing table
         elif command == 'SHOWRT':
-            print 'IGNORING:', self.ignore_neighbors
             print self.routing_table
 
         # close down the connection

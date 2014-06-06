@@ -1,6 +1,8 @@
 
 # Bellman-Ford Network
 
+Assignment for Computer Networks (COMS 4119) implementing a multinode file transfer network using the Bellman-Ford algorithm for managing paths.
+
 - Nate Brennand
 - nsb2142
 
@@ -171,17 +173,6 @@ It will display how many chunks have been recived of the number expected.
 After the file has been fully received this will display 0/N.
 
 
-
-
-
-
-
-##Extra Features
-
-- Truly dynamic networking see the Network section
-  - not relying on the intitial config file for all neighbors added significant complexity
-- Variable number of file chunks as specifed in the Execution section.
-- The GET command mentioned in the File Transfers section.
 
 
 
